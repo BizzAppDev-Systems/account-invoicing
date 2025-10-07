@@ -1,0 +1,6 @@
+<odoo noupdate="1">
+    <record id="geocode_autocomplete_url" model="ir.config_parameter">
+        <field name="key">geocode.autocomplete_url</field>
+        <field name="value" />
+    </record>
+</odoo>

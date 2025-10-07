@@ -1,0 +1,2 @@
+This module extends the Google Document AI integration to enable automatic partner detection based on geolocation data during OCR invoice processing.
+It enhances accuracy by matching partners through latitude and longitude coordinates and automatically creates a new partner record when no match is found.
