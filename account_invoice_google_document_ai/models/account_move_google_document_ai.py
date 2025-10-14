@@ -2,23 +2,15 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 import base64
 import json
-import logging
 from collections import defaultdict
 
 from google.api_core.client_options import ClientOptions  # pylint: disable=W7936
-from google.api_core.exceptions import (
-    GoogleAPICallError,
-    PermissionDenied,
-    Unauthenticated,
-)
 from google.cloud import documentai_v1 as documentai  # pylint: disable=W7936
 from google.oauth2 import service_account  # pylint: disable=W7936
 
 from odoo import _, models
 from odoo.tools import float_compare
 from odoo.tools.misc import format_amount
-
-_logger = logging.getLogger(__name__)
 
 
 class AccountMoveGoogleDocumentAi(models.AbstractModel):
@@ -34,59 +26,36 @@ class AccountMoveGoogleDocumentAi(models.AbstractModel):
         if attachment.mimetype != "application/pdf":
             return
         company = self.env.company
-        try:
-            # Log the credentials for debugging purposes.
-            _logger.debug(
-                "Using OCR credentials: project=%s, location=%s, processor=%s, "
-                "authentication=%s",
-                company.ocr_google_project,
-                company.ocr_google_location,
-                company.ocr_google_processor,
-                company.ocr_google_authentication,
+        client_options = ClientOptions(
+            api_endpoint="{}-documentai.googleapis.com".format(
+                company.ocr_google_location
             )
-            client_options = ClientOptions(
-                api_endpoint="{}-documentai.googleapis.com".format(
-                    company.ocr_google_location
-                )
-            )
-            client = documentai.DocumentProcessorServiceClient(
-                client_options=client_options,
-                credentials=service_account.Credentials.from_service_account_info(
-                    json.loads(base64.b64decode(company.ocr_google_authentication))
-                ),
-            )
+        )
+        client = documentai.DocumentProcessorServiceClient(
+            client_options=client_options,
+            credentials=service_account.Credentials.from_service_account_info(
+                json.loads(base64.b64decode(company.ocr_google_authentication))
+            ),
+        )
 
-            name = client.processor_path(
-                company.ocr_google_project,
-                company.ocr_google_location,
-                company.ocr_google_processor,
-            )
+        name = client.processor_path(
+            company.ocr_google_project,
+            company.ocr_google_location,
+            company.ocr_google_processor,
+        )
 
-            encoded_data = attachment.datas
-            decoded_data = base64.b64decode(encoded_data)
+        encoded_data = attachment.datas
+        decoded_data = base64.b64decode(encoded_data)
 
-            # Read the file into memory
-            document = {"content": decoded_data, "mime_type": "application/pdf"}
-            raw_document = documentai.RawDocument(**document)
-            # Configure the process request
-            request = documentai.ProcessRequest(name=name, raw_document=raw_document)
-            # Recognizes text entities in the PDF document
-            result = client.process_document(request=request)
-            entities = result.document.entities
-            return self._parse_ocr_entities(entities)
-        except Unauthenticated as e:
-            _logger.debug("OCR authentication failed: %s", str(e))
-        except PermissionDenied as e:
-            _logger.debug("OCR permission denied: %s", str(e))
-        except GoogleAPICallError as e:
-            _logger.debug("Google API call error during OCR: %s", str(e))
-        except Exception as e:
-            _logger.debug(
-                "Unexpected error while processing OCR for attachment %s: %s",
-                attachment.name,
-                str(e),
-            )
-        return None
+        # Read the file into memory
+        document = {"content": decoded_data, "mime_type": "application/pdf"}
+        raw_document = documentai.RawDocument(**document)
+        # Configure the process request
+        request = documentai.ProcessRequest(name=name, raw_document=raw_document)
+        # Recognizes text entities in the PDF document
+        result = client.process_document(request=request)
+        entities = result.document.entities
+        return self._parse_ocr_entities(entities)
 
     def _parse_ocr_float(self, entity):
         if (
@@ -128,37 +97,17 @@ class AccountMoveGoogleDocumentAi(models.AbstractModel):
         return line_item_data
 
     def _control_amount(self, invoice, field, value):
-        try:
-            if (
-                float_compare(
-                    value,
-                    invoice[field],
-                    precision_rounding=invoice.currency_id.rounding,
-                )
-                != 0
-            ):
-                return _(
-                    "%(field_name)s is not coincident (%(value1)s - %(value2)s)"
-                ) % {
-                    "field_name": invoice._fields[field].string,
-                    "value1": format_amount(self.env, value, invoice.currency_id),
-                    "value2": format_amount(
-                        self.env, invoice[field], invoice.currency_id
-                    ),
-                }
-        except AssertionError as e:
-            _logger.debug(
-                "Float comparison failed due to uploaded invoice currency is not "
-                "active.",
-                str(e),
+        if (
+            float_compare(
+                value, invoice[field], precision_rounding=invoice.currency_id.rounding
             )
-        except Exception as e:
-            _logger.exception(
-                "Unexpected error in _control_amount for invoice %s: %s",
-                invoice.name,
-                str(e),
-            )
-        return None
+            != 0
+        ):
+            return _("%(field_name)s is not coincident (%(value1)s - %(value2)s)") % {
+                "field_name": invoice._fields[field].string,
+                "value1": format_amount(self.env, value, invoice.currency_id),
+                "value2": format_amount(self.env, invoice[field], invoice.currency_id),
+            }
 
     def _ocr_field_control(self):
         return {
