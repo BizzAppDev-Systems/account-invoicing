@@ -6,7 +6,7 @@
     "author": "BizzAppDev Systems Pvt. Ltd., Odoo Community Association (OCA)",
     "website": "https://github.com/OCA/account-invoicing",
     "depends": ["account_invoice_google_document_ai"],
-    "data": ["views/res_config_setting_views.xml"],
+    "data": [],
     "installable": True,
     "auto_install": False,
 }
